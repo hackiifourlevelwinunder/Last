@@ -1,58 +1,52 @@
 const express = require("express");
 const http = require("http");
-const socketIo = require("socket.io");
+const { Server } = require("socket.io");
 const crypto = require("crypto");
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = new Server(server);
+
+const PORT = process.env.PORT || 3000;
 
 app.use(express.static("public"));
 
 let currentResult = null;
 let previousResult = null;
+let roundStart = Date.now();
 
-function generateDiceRoll() {
-  return Math.floor(crypto.randomInt(1, 7)); // 1–6
+function generateResult() {
+  const dice = [
+    crypto.randomInt(1, 7),
+    crypto.randomInt(1, 7),
+    crypto.randomInt(1, 7)
+  ];
+  const total = dice[0] + dice[1] + dice[2];
+  return { dice, total, timestamp: new Date().toISOString() };
 }
 
-function generateRound() {
-  const dice = [generateDiceRoll(), generateDiceRoll(), generateDiceRoll()];
-  const final = dice.reduce((a, b) => a + b, 0);
-
-  const result = {
-    dice,
-    final,
-    timestamp: new Date().toISOString()
-  };
-
+function startNewRound() {
   previousResult = currentResult;
-  currentResult = result;
+  currentResult = generateResult();
+  roundStart = Date.now();
 
-  io.emit("result", {
-    current: currentResult,
-    previous: previousResult
+  io.emit("newRound", {
+    previous: previousResult,
+    current: currentResult
   });
-
-  console.log("New Round:", result);
 }
 
-// First round immediately
-generateRound();
-
-// Every 60s new round
-setInterval(generateRound, 60000);
+setInterval(startNewRound, 60000);
+startNewRound();
 
 io.on("connection", (socket) => {
   console.log("Client connected");
-
-  if (currentResult) {
-    socket.emit("result", {
-      current: currentResult,
-      previous: previousResult
-    });
-  }
+  socket.emit("newRound", {
+    previous: previousResult,
+    current: currentResult
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
