@@ -9,24 +9,19 @@ const wss = new WebSocket.Server({ server });
 
 let lastResult = null;
 let history = [];
+let lockedRound = null; // preview ke liye locked data
 
 // 🎲 CSPRNG → 25 token bytes generate karke 0-9 number banayenge
-function generateResult() {
-  const buffer = crypto.randomBytes(25); // 25 token
-  const numbers = [];
+function generateRound() {
+  const buffer = crypto.randomBytes(25); // 25 tokens
+  const tokens = [];
+  for (let i = 0; i < buffer.length; i++) tokens.push(buffer[i] % 10);
 
-  for (let i = 0; i < buffer.length; i++) {
-    numbers.push(buffer[i] % 10); // 0–9
-  }
-
-  // frequency check → sab tokens ka distribution
   const freq = {};
-  numbers.forEach(n => freq[n] = (freq[n] || 0) + 1);
+  tokens.forEach(n => freq[n] = (freq[n] || 0) + 1);
 
-  // final number choose karo → 25 tokens ka sum % 10
-  const final = numbers.reduce((a, b) => a + b, 0) % 10;
-
-  return { final, tokens: numbers, freq };
+  const final = tokens.reduce((a, b) => a + b, 0) % 10; // 0–9
+  return { final, tokens, freq };
 }
 
 function broadcast(data) {
@@ -42,35 +37,35 @@ function startScheduler() {
     const now = new Date();
     const sec = now.getUTCSeconds();
 
-    // 🔹 Preview (35s pehle → 25s par)
+    // 🔹 Preview (25s pe → final se 35s pehle)
     if (sec === 25) {
-      const { final, tokens, freq } = generateResult();
+      lockedRound = generateRound();
       broadcast({
         type: "preview",
-        preview: final,
-        tokens,
-        freq,
+        preview: lockedRound.final,
+        tokens: lockedRound.tokens,
+        freq: lockedRound.freq,
         previous: lastResult,
         history
       });
     }
 
-    // 🔹 Final (0s par → har minute lock)
-    if (sec === 0) {
-      const { final, tokens, freq } = generateResult();
-      lastResult = final;
-
-      history.unshift(final);
+    // 🔹 Final (0s pe)
+    if (sec === 0 && lockedRound) {
+      lastResult = lockedRound.final;
+      history.unshift(lastResult);
       if (history.length > 20) history.pop();
 
       broadcast({
         type: "final",
-        result: final,
-        tokens,
-        freq,
+        result: lockedRound.final,
+        tokens: lockedRound.tokens,
+        freq: lockedRound.freq,
         previous: lastResult,
         history
       });
+
+      lockedRound = null; // reset after final
     }
   }, 1000);
 }
@@ -80,4 +75,4 @@ app.use(express.static("public"));
 server.listen(process.env.PORT || 10000, () => {
   console.log("✅ CSPRNG Live Final running...");
   startScheduler();
-});
+});￼Enter
