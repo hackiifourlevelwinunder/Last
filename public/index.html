@@ -2,39 +2,23 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CSPRNG Live Final</title>
+  <title>Dice RNG</title>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <h2>🎲 CSPRNG Live Final</h2>
-  <p>⏰ UTC Time: <span id="utc"></span></p>
-  <p>⏳ Countdown: <span id="countdown"></span>s</p>
-  <p>Previous Result: <span id="prev"></span></p>
-  <p>Final Result: <span id="final"></span></p>
+  <h2>🎲 Live Dice RNG</h2>
+  <div id="result">Waiting...</div>
 
   <script>
     const socket = io();
-    let roundStart = Date.now();
-
-    function updateTime() {
-      document.getElementById("utc").innerText = new Date().toISOString().split("T")[1].split(".")[0];
-      let elapsed = Math.floor((Date.now() - roundStart) / 1000);
-      let countdown = 60 - (elapsed % 60);
-      document.getElementById("countdown").innerText = countdown;
-    }
-
-    socket.on("newRound", (data) => {
-      roundStart = Date.now();
-      if (data.previous) {
-        document.getElementById("prev").innerText = `🎲 ${data.previous.dice.join(", ")} | Total = ${data.previous.total}`;
-      }
-      if (data.current) {
-        document.getElementById("final").innerText = `🎲 ${data.current.dice.join(", ")} | Total = ${data.current.total}`;
-      }
+    socket.on("newResult", (data) => {
+      document.getElementById("result").innerHTML = `
+        Dice: ${data.dice.join(", ")} <br>
+        Total: ${data.total} <br>
+        Size: ${data.size} <br>
+        Time: ${data.time}
+      `;
     });
-
-    setInterval(updateTime, 1000);
   </script>
 </body>
 </html>
