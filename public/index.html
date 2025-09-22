@@ -1,42 +1,59 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <title>CSPRNG Live Final</title>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-    #current { font-size: 2em; margin: 20px 0; }
-    #previous { font-size: 1.5em; margin: 10px 0; color: gray; }
-    #timer { font-size: 1.5em; color: green; }
-    #history { margin-top: 20px; font-size: 1.2em; }
-  </style>
 </head>
 <body>
-  <h1>🔢 CSPRNG Live Final</h1>
-  <div>⏱ Countdown: <span id="timer">--</span></div>
-  <div>🎲 Current Result: <span id="current">--</span></div>
-  <div>⬅️ Previous Result: <span id="previous">--</span></div>
-  <div>📜 History: <span id="history">--</span></div>
+  <h2>🎲 CSPRNG Live Final</h2>
+  <div id="clock"></div>
+  <div id="countdown"></div>
+  <div id="current"></div>
+  <div id="previous"></div>
+  <div id="tokens"></div>
+  <div id="freq"></div>
+  <div id="history"></div>
 
-  <script>
-    const socket = new WebSocket("wss://" + window.location.host);
+<script>
+const ws = new WebSocket(`wss://${location.host}`);
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+ws.onmessage = (msg) => {
+  const data = JSON.parse(msg.data);
+  if (data.type === "preview") {
+    document.getElementById("current").innerText =
+      `🔮 Preview Result: ${data.preview}`;
+    document.getElementById("tokens").innerText =
+      `25 Tokens: ${data.tokens.join(", ")}`;
+    document.getElementById("freq").innerText =
+      `Frequency: ${JSON.stringify(data.freq)}`;
+    document.getElementById("previous").innerText =
+      `Prev: ${data.previous}`;
+  }
 
-      document.getElementById("current").innerText = data.result || "--";
-      document.getElementById("previous").innerText = data.previous || "--";
-      document.getElementById("history").innerText = (data.history || []).join(" | ");
-    };
+  if (data.type === "final") {
+    document.getElementById("current").innerText =
+      `✅ Final Result: ${data.result}`;
+    document.getElementById("tokens").innerText =
+      `25 Tokens: ${data.tokens.join(", ")}`;
+    document.getElementById("freq").innerText =
+      `Frequency: ${JSON.stringify(data.freq)}`;
+    document.getElementById("previous").innerText =
+      `Prev: ${data.previous}`;
+    document.getElementById("history").innerText =
+      `📜 History: ${data.history.join(", ")}`;
+  }
+};
 
-    // Countdown based on wall clock
-    function updateTimer() {
-      const now = new Date();
-      const remaining = 60 - now.getSeconds();
-      document.getElementById("timer").innerText = remaining + "s";
-      setTimeout(updateTimer, 1000);
-    }
-    updateTimer();
-  </script>
+// realtime clock + countdown
+setInterval(() => {
+  const now = new Date();
+  const sec = now.getUTCSeconds();
+  const countdown = 60 - sec;
+  document.getElementById("clock").innerText =
+    `⏰ UTC Time: ${now.toISOString().substr(11,8)}`;
+  document.getElementById("countdown").innerText =
+    `⌛ Countdown: ${countdown}s`;
+}, 1000);
+</script>
 </body>
 </html>
