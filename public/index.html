@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CSPRNG Live - Final</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>CSPRNG Live RNG</h1>
+
+    <div class="card">
+      <div class="row"><div>Minute Start:</div><div id="minute">-</div></div>
+      <div class="row"><div>Final Digit:</div><div id="final">-</div></div>
+      <div class="row"><div>Samples Taken:</div><div id="samples">0</div></div>
+      <div class="row"><div>Preview in:</div><div id="preview-countdown">-</div></div>
+      <div class="row"><div>Final in:</div><div id="final-countdown">-</div></div>
+    </div>
+
+    <div class="prev-card" id="prev-card" style="display:none;">
+      <h3>Previous Result (shown at preview time)</h3>
+      <div id="prev-minute">-</div>
+      <div id="prev-digit">-</div>
+      <div id="prev-freq"></div>
+    </div>
+
+    <h2>Frequency (0–9)</h2>
+    <table id="freq">
+      <thead><tr><th>Digit</th><th>Count</th></tr></thead>
+      <tbody id="freq-body"></tbody>
+    </table>
+  </div>
+
+<script>
+const ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://') + location.host);
+let counts = {}; for(let i=0;i<10;i++) counts[i]=0;
+let minuteStart = null;
+let previewOffset = 35;
+let samplesTaken = 0;
+
+function updateTable(){
+  const body = document.getElementById('freq-body'); body.innerHTML='';
+  for(let i=0;i<10;i++){ const tr=document.createElement('tr'); tr.innerHTML='<td>'+i+'</td><td>'+(counts[i]||0)+'</td>'; body.appendChild(tr); }
+}
+
+function updateCountdowns(){
+  if(!minuteStart) return;
+  const now = new Date();
+  const msFinal = new Date(minuteStart).getTime() + 60000 - now.getTime();
+  const secFinal = Math.max(0, Math.ceil(msFinal/1000));
+  const secPreview = Math.max(0, secFinal - previewOffset);
+  document.getElementById('final-countdown').textContent = secFinal + 's';
+  document.getElementById('preview-countdown').textContent = secPreview + 's';
+}
+
+function showPrevious(prev){
+  if(!prev) return;
+  document.getElementById('prev-card').style.display = 'block';
+  document.getElementById('prev-minute').textContent = 'Minute: ' + prev.minuteStart;
+  document.getElementById('prev-digit').textContent = 'Final: ' + prev.finalDigit;
+  document.getElementById('prev-freq').innerHTML = '<pre>' + JSON.stringify(prev.counts, null, 2) + '</pre>';
+}
+
+ws.onmessage = (ev) => {
+  const data = JSON.parse(ev.data);
+  if(data.type === 'welcome'){
+    previewOffset = data.previewOffset || previewOffset;
+    if(data.previousResult) showPrevious(data.previousResult);
+  }
+  if(data.type === 'sample'){
+    minuteStart = data.minuteStart || minuteStart;
+    samplesTaken = data.samplesTaken || samplesTaken;
+    counts = data.counts || counts;
+    document.getElementById('minute').textContent = minuteStart || '-';
+    document.getElementById('samples').textContent = samplesTaken;
+    updateTable();
+    updateCountdowns();
+  }
+  if(data.type === 'preview'){
+    minuteStart = data.minuteStart;
+    previewOffset = data.previewOffset || previewOffset;
+    counts = data.counts || counts;
+    document.getElementById('minute').textContent = minuteStart;
+    document.getElementById('samples').textContent = data.samplesTaken;
+    document.getElementById('final').textContent = '(preview)';
+    updateTable();
+    updateCountdowns();
+    // preview time: if server also sent previousResult, it will show via 'previous' event
+  }
+  if(data.type === 'final'){
+    minuteStart = data.minuteStart;
+    counts = data.counts || counts;
+    document.getElementById('minute').textContent = minuteStart;
+    document.getElementById('samples').textContent = data.samplesTaken;
+    document.getElementById('final').textContent = data.finalDigit;
+    updateTable();
+    updateCountdowns();
+  }
+  if(data.type === 'previous'){
+    showPrevious(data.previous);
+  }
+};
+
+setInterval(updateCountdowns, 400);
+</script>
+</body>
+</html>
