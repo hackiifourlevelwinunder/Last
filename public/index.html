@@ -2,51 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CSPRNG Live Final</title>
   <script src="/socket.io/socket.io.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; text-align: center; margin-top: 30px; }
-    .result { font-size: 24px; margin: 10px; }
-    .countdown { font-size: 20px; color: darkred; margin-top: 15px; }
-  </style>
 </head>
 <body>
   <h2>🎲 CSPRNG Live Final</h2>
-  <div id="utcTime"></div>
-  <div class="result" id="previousResult">⬅ Previous: --</div>
-  <div class="result" id="currentResult">🎲 Current: --</div>
-  <div class="countdown" id="countdown"></div>
+  <p>⏰ UTC Time: <span id="utc"></span></p>
+  <p>⏳ Countdown: <span id="countdown"></span>s</p>
+  <p>Previous Result: <span id="prev"></span></p>
+  <p>Final Result: <span id="final"></span></p>
 
   <script>
     const socket = io();
-    let roundStartTime = Date.now();
+    let roundStart = Date.now();
 
-    socket.on("result", (data) => {
+    function updateTime() {
+      document.getElementById("utc").innerText = new Date().toISOString().split("T")[1].split(".")[0];
+      let elapsed = Math.floor((Date.now() - roundStart) / 1000);
+      let countdown = 60 - (elapsed % 60);
+      document.getElementById("countdown").innerText = countdown;
+    }
+
+    socket.on("newRound", (data) => {
+      roundStart = Date.now();
       if (data.previous) {
-        document.getElementById("previousResult").innerText =
-          "⬅ Previous: " + data.previous.final + " 🎲 (" + data.previous.dice.join(", ") + ")";
+        document.getElementById("prev").innerText = `🎲 ${data.previous.dice.join(", ")} | Total = ${data.previous.total}`;
       }
       if (data.current) {
-        document.getElementById("currentResult").innerText =
-          "🎲 Current: " + data.current.final + " 🎲 (" + data.current.dice.join(", ") + ")";
+        document.getElementById("final").innerText = `🎲 ${data.current.dice.join(", ")} | Total = ${data.current.total}`;
       }
-      roundStartTime = Date.now();
     });
 
-    // Show UTC time live
-    setInterval(() => {
-      const now = new Date();
-      document.getElementById("utcTime").innerText =
-        "⏰ UTC Time: " + now.toISOString().split("T")[1].split(".")[0];
-    }, 1000);
-
-    // Countdown + 35s earlier reveal
-    setInterval(() => {
-      const elapsed = Math.floor((Date.now() - roundStartTime) / 1000);
-      const remaining = 60 - elapsed;
-      document.getElementById("countdown").innerText =
-        "⏳ Countdown: " + (remaining > 0 ? remaining : 0) + "s";
-    }, 1000);
+    setInterval(updateTime, 1000);
   </script>
 </body>
 </html>
