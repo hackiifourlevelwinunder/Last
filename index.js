@@ -10,8 +10,23 @@ const wss = new WebSocket.Server({ server });
 let lastResult = null;
 let history = [];
 
+// 🎲 CSPRNG → 25 token bytes generate karke 0-9 number banayenge
 function generateResult() {
-  return crypto.randomInt(3, 19); // 3 dice total 3–18
+  const buffer = crypto.randomBytes(25); // 25 token
+  const numbers = [];
+
+  for (let i = 0; i < buffer.length; i++) {
+    numbers.push(buffer[i] % 10); // 0–9
+  }
+
+  // frequency check → sab tokens ka distribution
+  const freq = {};
+  numbers.forEach(n => freq[n] = (freq[n] || 0) + 1);
+
+  // final number choose karo → 25 tokens ka sum % 10
+  const final = numbers.reduce((a, b) => a + b, 0) % 10;
+
+  return { final, tokens: numbers, freq };
 }
 
 function broadcast(data) {
@@ -27,28 +42,32 @@ function startScheduler() {
     const now = new Date();
     const sec = now.getUTCSeconds();
 
-    // 🔹 Preview at 25s (final se 35s pehle)
+    // 🔹 Preview (35s pehle → 25s par)
     if (sec === 25) {
-      const previewResult = generateResult();
+      const { final, tokens, freq } = generateResult();
       broadcast({
         type: "preview",
-        result: previewResult,
+        preview: final,
+        tokens,
+        freq,
         previous: lastResult,
         history
       });
     }
 
-    // 🔹 Final at 0s (new minute)
+    // 🔹 Final (0s par → har minute lock)
     if (sec === 0) {
-      const finalResult = generateResult();
-      lastResult = finalResult;
+      const { final, tokens, freq } = generateResult();
+      lastResult = final;
 
-      history.unshift(finalResult);
-      if (history.length > 10) history.pop();
+      history.unshift(final);
+      if (history.length > 20) history.pop();
 
       broadcast({
         type: "final",
-        result: finalResult,
+        result: final,
+        tokens,
+        freq,
         previous: lastResult,
         history
       });
