@@ -1,78 +1,99 @@
 const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
+const { WebSocketServer } = require("ws");
 const crypto = require("crypto");
 
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const PORT = process.env.PORT || 3000;
 
-let lastResult = null;
+// Serve static frontend (index.html)
+app.use(express.static("public"));
+
+// Start server
+const server = app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
+
+// WebSocket setup
+const wss = new WebSocketServer({ server });
+
+// Variables for RNG state
+let currentRound = null;
+let previousRound = null;
 let history = [];
-let lockedRound = null; // preview ke liye locked data
 
-// 🎲 CSPRNG → 25 token bytes generate karke 0-9 number banayenge
+// Function to generate 25 secure random tokens (0–9)
 function generateRound() {
-  const buffer = crypto.randomBytes(25); // 25 tokens
-  const tokens = [];
-  for (let i = 0; i < buffer.length; i++) tokens.push(buffer[i] % 10);
+  let counts = {};
+  for (let i = 0; i < 10; i++) counts[i] = 0;
 
-  const freq = {};
-  tokens.forEach(n => freq[n] = (freq[n] || 0) + 1);
+  let tokens = [];
+  for (let i = 0; i < 25; i++) {
+    const digit = crypto.randomInt(0, 10); // 0–9
+    tokens.push(digit);
+    counts[digit]++;
+  }
 
-  const final = tokens.reduce((a, b) => a + b, 0) % 10; // 0–9
-  return { final, tokens, freq };
+  const finalDigit = tokens[tokens.length - 1]; // Last token
+  return {
+    start: new Date().toISOString(),
+    tokens,
+    counts,
+    final: finalDigit
+  };
 }
 
-function broadcast(data) {
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(data));
+// Function to start new round
+function startNewRound() {
+  if (currentRound) {
+    previousRound = currentRound;
+    history.unshift(currentRound.final);
+    if (history.length > 10) history.pop();
+  }
+
+  currentRound = generateRound();
+  console.log("🎲 New Round:", currentRound);
+
+  broadcastState();
+}
+
+// Send state to clients
+function broadcastState() {
+  const state = {
+    currentRound,
+    previousRound,
+    history,
+    serverTime: new Date().toISOString()
+  };
+  const msg = JSON.stringify(state);
+
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) {
+      client.send(msg);
     }
   });
 }
 
-function startScheduler() {
-  setInterval(() => {
-    const now = new Date();
-    const sec = now.getUTCSeconds();
+// WebSocket connection
+wss.on("connection", (ws) => {
+  console.log("🔗 Client connected");
+  ws.send(
+    JSON.stringify({
+      currentRound,
+      previousRound,
+      history,
+      serverTime: new Date().toISOString()
+    })
+  );
+});
 
-    // 🔹 Preview (25s pe → final se 35s pehle)
-    if (sec === 25) {
-      lockedRound = generateRound();
-      broadcast({
-        type: "preview",
-        preview: lockedRound.final,
-        tokens: lockedRound.tokens,
-        freq: lockedRound.freq,
-        previous: lastResult,
-        history
-      });
-    }
-
-    // 🔹 Final (0s pe)
-    if (sec === 0 && lockedRound) {
-      lastResult = lockedRound.final;
-      history.unshift(lastResult);
-      if (history.length > 20) history.pop();
-
-      broadcast({
-        type: "final",
-        result: lockedRound.final,
-        tokens: lockedRound.tokens,
-        freq: lockedRound.freq,
-        previous: lastResult,
-        history
-      });
-
-      lockedRound = null; // reset after final
-    }
-  }, 1000);
+// Run every 60s exactly, no skipping
+function alignToMinute() {
+  const ms = 60000 - (Date.now() % 60000);
+  setTimeout(() => {
+    startNewRound();
+    setInterval(startNewRound, 60000);
+  }, ms);
 }
 
-app.use(express.static("public"));
-
-server.listen(process.env.PORT || 10000, () => {
-  console.log("✅ CSPRNG Live Final running...");
-  startScheduler();
-});￼Enter
+// Start the loop
+alignToMinute();
